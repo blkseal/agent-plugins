@@ -1,0 +1,30 @@
+#!/usr/bin/env -S python3 -I
+# PostToolUse hook: at 75% context or 5-hour usage, tells Claude once per session to wrap up and warn the user.
+import datetime, json, os, sys, tempfile
+
+THRESHOLD = 75
+data = json.load(sys.stdin)
+session = data.get("session_id")
+folder = os.path.join(tempfile.gettempdir(), f"scrum-team-usage-{os.getuid()}")
+try:
+    usage = json.load(open(os.path.join(folder, f"{session}.json")))
+except (OSError, ValueError, TypeError):
+    sys.exit(0)  # no status line configured, or no data yet
+
+warnings = []
+for key, label in (("context", "this conversation's context"), ("five_hour", "the 5-hour plan limit")):
+    pct = usage.get(key)
+    marker = os.path.join(folder, f"{session}.{key}.warned")
+    if pct is None or pct < THRESHOLD or os.path.exists(marker):
+        continue
+    open(marker, "w").close()
+    resets = usage.get("five_hour_resets_at") if key == "five_hour" else None
+    when = f" (resets at {datetime.datetime.fromtimestamp(resets):%H:%M})" if resets else ""
+    warnings.append(f"{label} is at {pct:.0f}%{when}")
+
+if warnings:
+    text = ("scrum-team usage warning: " + "; ".join(warnings) + ". Finish the step you are on, but start nothing new: "
+            "if a sprint is running, let the current developer reach its next checkpoint, update the tickets and BOARD.md "
+            "so the sprint can be continued later, and do not start a gate run you cannot finish. "
+            "Then tell the user plainly that usage is about to run out and what is left to do.")
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}))

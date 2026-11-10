@@ -1,0 +1,14 @@
+{
+  "name": "agent-plugins",
+  "description": "Reusable Claude Code agents and workflows",
+  "owner": {
+    "name": "agent-plugins contributors"
+  },
+  "plugins": [
+    {
+      "name": "scrum-team",
+      "source": "./plugins/scrum-team",
+      "description": "A Scrum team for any codebase: Scrum Master, Developer + Pair Reviewer pairs, AI code and security review, and a risk vote that sends risky changes to a human before commit."
+    }
+  ]
+}

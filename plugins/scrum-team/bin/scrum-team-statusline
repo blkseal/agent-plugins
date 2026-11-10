@@ -1,0 +1,22 @@
+#!/usr/bin/env -S python3 -I
+# Status line for the user's settings: shows usage and saves it, since hooks never receive these numbers.
+import json, os, sys, tempfile
+
+data = json.load(sys.stdin)
+usage = {
+    "context": (data.get("context_window") or {}).get("used_percentage"),
+    "five_hour": ((data.get("rate_limits") or {}).get("five_hour") or {}).get("used_percentage"),
+    "five_hour_resets_at": ((data.get("rate_limits") or {}).get("five_hour") or {}).get("resets_at"),
+}
+session = data.get("session_id")
+if session:
+    folder = os.path.join(tempfile.gettempdir(), f"scrum-team-usage-{os.getuid()}")
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    path = os.path.join(folder, f"{session}.json")
+    with open(path + ".tmp", "w") as f:
+        json.dump(usage, f)
+    os.replace(path + ".tmp", path)  # atomic, so the hook never reads half a file
+
+parts = [f"ctx {usage['context']:.0f}%" if usage["context"] is not None else None,
+         f"5h {usage['five_hour']:.0f}%" if usage["five_hour"] is not None else None]
+print(" · ".join(p for p in parts if p) or "scrum-team")

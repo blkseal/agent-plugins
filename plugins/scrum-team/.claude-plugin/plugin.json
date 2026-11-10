@@ -1,0 +1,13 @@
+{
+  "name": "scrum-team",
+  "version": "2.1.0",
+  "description": "Scrum Master workflow with Developer + Pair Reviewer pairs, then a layered commit gate: AI code review, security review when flagged, and a risk-classifier vote that sends risky changes to a human. Project-agnostic: each repo describes itself in .claude/scrum-team.md.",
+  "license": "MIT",
+  "keywords": [
+    "scrum",
+    "agents",
+    "code-review",
+    "architecture",
+    "workflow"
+  ]
+}

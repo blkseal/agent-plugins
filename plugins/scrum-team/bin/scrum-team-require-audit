@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# PreToolUse hook on Bash: exit 2 blocks a `git commit` and shows stderr to Claude.
+set -uo pipefail
+
+input=$(cat)
+
+# Cheap pre-filter so ordinary Bash calls cost one grep.
+printf '%s' "$input" | grep -q 'commit' || exit 0
+
+block() { printf 'Commit blocked by scrum-team: %s\n' "$1" >&2; exit 2; }
+
+command -v python3 >/dev/null 2>&1 || block "python3 is needed to check git commit commands. Install it, or a human can start the session with SCRUM_TEAM_SKIP_AUDIT=1."
+
+# Prints the repo dir of each `git commit` in the command, or "BAD <reason>" for commits the stamp cannot vouch for.
+targets=$(printf '%s' "$input" | python3 -I -c '
+import json, os, shlex, sys
+data = json.load(sys.stdin)
+cmd = data.get("tool_input", {}).get("command", "")
+cwd = data.get("cwd") or os.getcwd()
+try:
+    lexer = shlex.shlex(cmd, posix=True, punctuation_chars=";&|()")
+    lexer.whitespace_split = True
+    tokens = list(lexer)
+except ValueError:
+    import re
+    if re.search(r"\bgit\b[^;&|]*\bcommit\b", cmd):
+        print("BAD the command could not be parsed; run git commit on its own")
+    sys.exit()
+# Flags that take a value, and flags that make git commit more than the staged index.
+with_value = {"-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message",
+              "--author", "--date", "--trailer", "-t", "--template", "--cleanup", "--fixup", "--squash"}
+widening = {"-a", "--all", "-i", "--include", "-o", "--only", "--pathspec-from-file", "--interactive", "-p", "--patch"}
+segments, seg = [], []
+for t in tokens:
+    if t and set(t) <= set(";&|()"):
+        segments.append(seg); seg = []
+    else:
+        seg.append(t)
+segments.append(seg)
+for seg in segments:
+    if seg[:1] == ["cd"] and len(seg) > 1:
+        cwd = os.path.join(cwd, os.path.expanduser(seg[1])); continue
+    if not seg or os.path.basename(seg[0]) != "git":
+        continue
+    i, repo = 1, cwd
+    while i < len(seg) and seg[i].startswith("-"):
+        if seg[i] == "-C" and i + 1 < len(seg):
+            repo = os.path.join(repo, seg[i + 1]); i += 2
+        elif seg[i] == "-c":
+            i += 2
+        else:
+            i += 1
+    if i >= len(seg) or seg[i] != "commit":
+        continue
+    args, j = seg[i + 1:], 0
+    while j < len(args):
+        a = args[j]
+        name = a.split("=", 1)[0]
+        short = a.startswith("-") and not a.startswith("--") and len(a) > 2
+        if name in widening or (short and set(a[1:]) & set("aiop")):
+            print(f"BAD `{a}` would commit changes that were not reviewed; stage the files and use plain git commit"); sys.exit()
+        if a == "--":
+            print("BAD paths after git commit would commit changes that were not reviewed"); sys.exit()
+        if not a.startswith("-"):
+            print(f"BAD `{a}` looks like a path; git commit <paths> commits changes that were not reviewed"); sys.exit()
+        j += 2 if name in with_value and "=" not in a and not short else 1
+    print(repo)
+')
+
+[ -z "$targets" ] && exit 0
+
+# Emergency bypass, set by a human only.
+[ "${SCRUM_TEAM_SKIP_AUDIT:-0}" = "1" ] && exit 0
+
+case "$targets" in BAD\ *) block "${targets#BAD }" ;; esac
+
+while IFS= read -r repo; do
+  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || continue
+  # Nothing staged: let git report "nothing to commit" itself.
+  git -C "$repo" diff --cached --quiet && continue
+
+  git_dir=$(cd "$repo" && cd "$(git rev-parse --git-dir)" && pwd)
+  current=$(git -C "$repo" diff --cached --binary | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1)
+
+  [ "$current" = "$(cat "$git_dir/scrum-team-audit" 2>/dev/null || true)" ] ||
+    block "the staged changes have not passed the automated review (or changed after it). Run /scrum-team:commit-gate: the code-auditor (and the security-reviewer when it asks for one) must stamp the exact staged diff."
+
+  # A human must approve when the risk vote said so or a staged file matches a config "Human review" glob.
+  needs_human=0
+  [ "$(cat "$git_dir/scrum-team-human-required" 2>/dev/null || true)" = "$current" ] && needs_human=1
+
+  # The config sits in the project folder (repo top, or a subfolder in a monorepo); globs are relative to it.
+  top=$(git -C "$repo" rev-parse --show-toplevel)
+  project=$(cd "$repo" && pwd)
+  while [ ! -f "$project/.claude/scrum-team.md" ] && [ "$project" != "$top" ] && [ "$project" != / ]; do
+    project=$(dirname "$project")
+  done
+  config="$project/.claude/scrum-team.md"
+  if [ -f "$config" ]; then
+    pathspecs=()
+    while IFS= read -r glob; do pathspecs+=(":(glob)$glob"); done < <(
+      awk '/^## /{s = ($0 ~ /^## Human review/)} s && /^- `[^`]+`/' "$config" | sed -E 's/^- `([^`]+)`.*/\1/')
+    [ ${#pathspecs[@]} -gt 0 ] && [ -n "$(git -C "$project" diff --cached --name-only -- "${pathspecs[@]}")" ] && needs_human=1
+  fi
+
+  # Opt-out chosen by the user at launch; the exact value keeps a stray `=1` from switching it on.
+  [ "${SCRUM_TEAM_SKIP_HUMAN_APPROVAL:-}" = "accept-risk" ] && needs_human=0
+
+  [ "$needs_human" = 1 ] && [ "$(cat "$git_dir/scrum-team-human-approved" 2>/dev/null || true)" != "$current" ] &&
+    block "this change needs a human review. Show the human what to look at (files, evidence, review findings) and ask them to run \`! scrum-team-approve\`. Never run it yourself."
+done <<< "$targets"
+
+# Stamps stay so a commit that fails for another reason can be retried; a new diff never matches them.
+exit 0
