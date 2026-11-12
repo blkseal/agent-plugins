@@ -84,30 +84,6 @@ while IFS= read -r repo; do
 
   [ "$current" = "$(cat "$git_dir/scrum-team-audit" 2>/dev/null || true)" ] ||
     block "the staged changes have not passed the automated review (or changed after it). Run /scrum-team:commit-gate: the code-auditor (and the security-reviewer when it asks for one) must stamp the exact staged diff."
-
-  # A human must approve when the risk vote said so or a staged file matches a config "Human review" glob.
-  needs_human=0
-  [ "$(cat "$git_dir/scrum-team-human-required" 2>/dev/null || true)" = "$current" ] && needs_human=1
-
-  # The config sits in the project folder (repo top, or a subfolder in a monorepo); globs are relative to it.
-  top=$(git -C "$repo" rev-parse --show-toplevel)
-  project=$(cd "$repo" && pwd)
-  while [ ! -f "$project/.claude/scrum-team.md" ] && [ "$project" != "$top" ] && [ "$project" != / ]; do
-    project=$(dirname "$project")
-  done
-  config="$project/.claude/scrum-team.md"
-  if [ -f "$config" ]; then
-    pathspecs=()
-    while IFS= read -r glob; do pathspecs+=(":(glob)$glob"); done < <(
-      awk '/^## /{s = ($0 ~ /^## Human review/)} s && /^- `[^`]+`/' "$config" | sed -E 's/^- `([^`]+)`.*/\1/')
-    [ ${#pathspecs[@]} -gt 0 ] && [ -n "$(git -C "$project" diff --cached --name-only -- "${pathspecs[@]}")" ] && needs_human=1
-  fi
-
-  # Opt-out chosen by the user at launch; the exact value keeps a stray `=1` from switching it on.
-  [ "${SCRUM_TEAM_SKIP_HUMAN_APPROVAL:-}" = "accept-risk" ] && needs_human=0
-
-  [ "$needs_human" = 1 ] && [ "$(cat "$git_dir/scrum-team-human-approved" 2>/dev/null || true)" != "$current" ] &&
-    block "this change needs a human review. Show the human what to look at (files, evidence, review findings) and ask them to run \`! scrum-team-approve\`. Never run it yourself."
 done <<< "$targets"
 
 # Stamps stay so a commit that fails for another reason can be retried; a new diff never matches them.

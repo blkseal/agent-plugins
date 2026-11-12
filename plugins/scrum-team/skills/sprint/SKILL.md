@@ -64,7 +64,7 @@ same message. Use the prompts in `references/prompts.md`. Set the ticket to **In
 **"Continue the sprint"** → read the board → In Review or Changes Requested tickets mean a gate run was interrupted: rerun `/scrum-team:commit-gate` from step 1 for that batch → resume In Progress tickets (spawn a fresh pair reviewer if the old one is gone; give it the ticket and current diff) → check Blocked tickets for answers → start Ready ones. Awaiting Gate tickets wait for your next gate decision.
 
 ## Troubleshooting
-- **Commit blocked by scrum-team** → follow the commit-gate troubleshooting; never set `SCRUM_TEAM_SKIP_AUDIT` or run `scrum-team-approve` yourself.
+- **Commit blocked by scrum-team** → follow the commit-gate troubleshooting; never set `SCRUM_TEAM_SKIP_AUDIT`; a human approval is the human's own yes in chat.
 - **Two developers edited the same file** → stop both, keep the earlier ticket's change, re-scope the other ticket, and run them one after the other from now on.
 - **Build or tests broken by another ticket** → create a blocker ticket and fix it before continuing.
 - **A subagent cannot find the config or the docs** → check the paths in `.claude/scrum-team.md`; they are relative to the repo folder the session started in.

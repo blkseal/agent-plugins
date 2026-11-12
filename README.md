@@ -15,7 +15,7 @@ A reusable Scrum team for any repository.
 | Security Reviewer | agent `scrum-team:security-reviewer` (read-only) | Runs when the code review flags it; exploitable vulnerabilities only |
 | Risk Classifier | agent `scrum-team:risk-classifier` ×3 | Three independent votes; the majority decides whether a human must review before commit |
 | Architect | agent `scrum-team:architect` (read-only) | Plan reviews and whole-repo sweeps against the written architecture; findings become tickets |
-| Commit gate | skill `/scrum-team:commit-gate` + hook + `scrum-team-stamp` / `scrum-team-approve` | Blocks `git commit` unless the reviewers stamped exactly the staged diff, and, when the vote or a "Human review" path in the config requires it, a human ran `! scrum-team-approve` |
+| Commit gate | skill `/scrum-team:commit-gate` + hook + `scrum-team-stamp` | Blocks `git commit` unless the reviewers stamped exactly the staged diff; when the risk vote or a "Human review" path requires it, the Scrum Master asks you in chat before committing |
 
 Supporting skills: `/scrum-team:team-setup` (writes `.claude/scrum-team.md` and the backlog for
 a new repo) and `/scrum-team:commit-gate` (the commit procedure).

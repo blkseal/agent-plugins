@@ -40,7 +40,7 @@ Paths are relative to this repository folder. Keep it short: link to docs, don't
 
 ## Human review
 Paths that always need a human approval before commit, one git glob per line in backticks
-(the commit hook reads these lines):
+(the commit gate asks the human in chat):
 - `.github/workflows/**`
 - <e.g. `src/billing/**`, `**/migrations/**`>
 
